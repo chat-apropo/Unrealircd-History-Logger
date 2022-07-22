@@ -6,9 +6,40 @@
  * https://github.com/matheusfillipe/chat-apropo
  */
 
+#include <stdarg.h>
 #include "unrealircd.h"
 
-#define MAX_LENGTH               2000 /* Max length of a history per channel to keep */
+#define MAX_LENGTH 2000 /* Max length of a history per channel to keep */
+#define ENABLE_DEBUG true
+#define LOGTO_USER "mattf" /* User to send the log to */
+
+
+// Message user
+void vmessage_user(char *user, char *msg, va_list args) {
+  Client *client = find_client(user, NULL);
+  if(!client){
+    return;
+  }
+  vsendto_one(client, NULL, msg, args);
+}
+
+void message_user(char *user, char *msg, ...) {
+  va_list args;
+  va_start(args, msg);
+  vmessage_user(user, msg, args);
+  va_end(args);
+}
+
+// Stupid print debug that will send messages to a user
+void mdebug(char *msg, ...){
+  if(!ENABLE_DEBUG){
+    return;
+  }
+  va_list args;
+  va_start(args, msg);
+  vmessage_user(LOGTO_USER, msg, args);
+  va_end(args);
+}
 
 ModuleHeader MOD_HEADER
 = {
@@ -58,42 +89,33 @@ MOD_UNLOAD()
 }
 
 CMD_FUNC(command){
-  sendto_one(client, NULL, ":%s hello world %s", me.name, client->name);
+  mdebug(":%s hello world %s", me.name, client->name);
 }
 
-
 int on_channel_send(Client *client, Channel *channel, MessageTag *mtags, const char *text, SendType	sendtype) {
-  // Admin is mattf user
-  Client *admin = find_client("mattf", NULL);
-  sendto_one(admin, NULL, "%s:%s - %s", channel->name, client->name, text);
+  mdebug("%s:%s - %s", channel->name, client->name, text);
   return 0;
 }
 
 int on_join(Client *client, Channel *channel, MessageTag *mtags) {
-  // Admin is mattf user
-  Client *admin = find_client("mattf", NULL);
-  sendto_one(admin, NULL, "%s joined %s", client->name, channel->name);
+  mdebug("%s joined %s", client->name, channel->name);
   return 0;
 }
 
 int on_part(Client *client, Channel *channel, MessageTag *mtags, const char *comment) {
-  // Admin is mattf user
-  Client *admin = find_client("mattf", NULL);
-  sendto_one(admin, NULL, "%s left %s", client->name, channel->name);
+  mdebug("%s left %s", client->name, channel->name);
   return 0;
 }
 
 int on_quit(Client *client, MessageTag *mtags, const char *comment) {
-  // Admin is mattf user
-  Client *admin = find_client("mattf", NULL);
-  sendto_one(admin, NULL, "%s quit", client->name);
+  mdebug("%s quit", client->name);
   // Also send channels he was in
   User *user = client->user;
   if (user) {
     Membership *membership = user->channel;
     while (membership!=NULL) {
       Channel *channel = membership->channel;
-      sendto_one(admin, NULL, "%s left %s", client->name, channel->name);
+      mdebug("%s left %s", client->name, channel->name);
       membership = membership->next;
     }
   }
