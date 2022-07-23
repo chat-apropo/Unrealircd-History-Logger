@@ -13,6 +13,19 @@
 #define ENABLE_DEBUG true
 #define LOGTO_USER "mattf" /* User to send the log to */
 
+ModuleHeader MOD_HEADER
+= {
+        "third/histlogger", /* name */
+        "0.0.1", /* version */
+        "Logger for channels", /* description */
+        "Matheus Fillipe", /* author */
+        "unrealircd-6", /* do not change this, it indicates module API version */
+};
+
+/* struct HistLoggerConfig { */
+/*   chat *whitelist; */
+/* } */
+
 
 // Message user
 void vmessage_user(char *user, char *msg, va_list args) {
@@ -41,15 +54,6 @@ void mdebug(char *msg, ...){
   va_end(args);
 }
 
-ModuleHeader MOD_HEADER
-= {
-        "third/loggerhistory", /* name */
-        "0.0.1", /* version */
-        "Logger for channels", /* description */
-        "Matheus Fillipe", /* author */
-        "unrealircd-6", /* do not change this, it indicates module API version */
-};
-
 // History command
 CMD_FUNC(command);
 
@@ -58,9 +62,13 @@ int on_join(Client *client, Channel *channel, MessageTag *mtags);
 int on_part(Client *client, Channel *channel, MessageTag *mtags, const char *comment);
 int on_quit(Client *client, MessageTag *mtags, const char *comment);
 
+int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs);
+
+
 MOD_TEST()
 {
     /* Test here */
+    HookAdd(modinfo->handle, HOOKTYPE_CONFIGTEST, 0, hist_logger_config_test);
     return MOD_SUCCESS;
 }
 
@@ -92,6 +100,42 @@ CMD_FUNC(command){
   mdebug(":%s hello world %s", me.name, client->name);
 }
 
+int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs) {
+  int errors = 0;
+  ConfigEntry *cep, *cep2;
+  if (type != CONFIG_SET)
+      return 0;
+
+  /* We are only interrested in set::histlogger... */
+  if (!ce || !ce->name || strcmp(ce->name, "histlogger"))
+      return 0; // return 0 to indicate: we don't know / we don't handle this!
+
+  for (cep = ce->items; cep; cep = cep->next) {
+    if (!cep->name) {
+      config_error("%s:%i: blank set::mymod item",
+          cep->file->filename, cep->line_number);
+      errors++;
+      continue;
+    }
+    else if (!strcmp(cep->name, "whitelist")) {
+    }
+    else if (!strcmp(cep->name, "blacklist")) {
+    }
+    else if (!strcmp(cep->name, "dbpath")) {
+    }
+    else if (!strcmp(cep->name, "regonly")) {
+    }
+    else {
+      config_error("%s:%i: unknown directive set::mymod::%s",
+          cep->file->filename, cep->line_number, cep->name);
+      errors++;
+    }
+  }
+
+  *errs = errors;
+  return errors ? -1 : 1;
+}
+
 int on_channel_send(Client *client, Channel *channel, MessageTag *mtags, const char *text, SendType	sendtype) {
   mdebug("%s:%s - %s", channel->name, client->name, text);
   return 0;
@@ -103,7 +147,7 @@ int on_join(Client *client, Channel *channel, MessageTag *mtags) {
 }
 
 int on_part(Client *client, Channel *channel, MessageTag *mtags, const char *comment) {
-  mdebug("%s left %s", client->name, channel->name);
+  mdebug("%s left %s  -  isReg: %d", client->name, channel->name, IsRegNick(client));
   return 0;
 }
 
