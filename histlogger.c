@@ -22,9 +22,12 @@ ModuleHeader MOD_HEADER
         "unrealircd-6", /* do not change this, it indicates module API version */
 };
 
-/* struct HistLoggerConfig { */
-/*   chat *whitelist; */
-/* } */
+struct HistLoggerConfig {
+  NameList *whitelist;
+  NameList *blacklist;
+  char *dbpath;
+  int regonly;
+} config;
 
 
 // Message user
@@ -63,12 +66,14 @@ int on_part(Client *client, Channel *channel, MessageTag *mtags, const char *com
 int on_quit(Client *client, MessageTag *mtags, const char *comment);
 
 int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs);
+int hist_logger_config_posttest(int *errs);
 
 
 MOD_TEST()
 {
     /* Test here */
     HookAdd(modinfo->handle, HOOKTYPE_CONFIGTEST, 0, hist_logger_config_test);
+    HookAdd(modinfo->handle, HOOKTYPE_CONFIGPOSTTEST, 0, hist_logger_config_posttest);
     return MOD_SUCCESS;
 }
 
@@ -102,7 +107,7 @@ CMD_FUNC(command){
 
 int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs) {
   int errors = 0;
-  ConfigEntry *cep, *cep2;
+  ConfigEntry *cep, *cep2, *value;
   if (type != CONFIG_SET)
       return 0;
 
@@ -118,12 +123,30 @@ int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs
       continue;
     }
     else if (!strcmp(cep->name, "whitelist")) {
+      for (value = cep->items; value; value = value->next) {
+        add_name_list(config.whitelist, value->name);
+      }
     }
     else if (!strcmp(cep->name, "blacklist")) {
+      for (value = cep->items; value; value = value->next) {
+        add_name_list(config.blacklist, value->name);
+      }
     }
     else if (!strcmp(cep->name, "dbpath")) {
+      if (!cep->value) {
+        config_error("%s:%i: set::histlogger::dbpath is empty",
+            cep->file->filename, cep->line_number);
+        errors++;
+      }
+      config.dbpath = cep->value;
     }
     else if (!strcmp(cep->name, "regonly")) {
+      config.regonly = atoi(cep->value);
+      if (config.regonly == 0) {
+        config_error("%s:%i: set::histlogger::regonly is not a number",
+            cep->file->filename, cep->line_number);
+        errors++;
+      }
     }
     else {
       config_error("%s:%i: unknown directive set::mymod::%s",
@@ -134,6 +157,19 @@ int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs
 
   *errs = errors;
   return errors ? -1 : 1;
+}
+
+int hist_logger_config_posttest(int *errs) {
+  int errors = 0;
+
+  if (!config.dbpath) {
+    config_error("set::mymod::dbpath is not set");
+    errors++; 
+  }
+  if (!config.regonly) {
+    config.regonly = 1;
+  }
+  return errors;
 }
 
 int on_channel_send(Client *client, Channel *channel, MessageTag *mtags, const char *text, SendType	sendtype) {
