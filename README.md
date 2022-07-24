@@ -3,7 +3,7 @@
 
 # Chat History logger
 
-Per user chat history. Only retrieve the history of what you missed in certain channel. Only allow registered users to have this feature.
+Per user chat history. Only retrieve the history of what you missed in certain channel. Only allow registered users to have this feature. This module will store the history in a separated database.
 
 ## Building
 
@@ -26,6 +26,7 @@ set {
         blacklist {}; /* If set to any those channels wont have any history */
         dbpath "/home/irc/histlog.db"; /* Database to store messages and other info for the module */
         regonly 1; /* Allow registered users only to use this feature */
+        maxlength 1000; /* Max backlog size to send to a client */
     }
 }
 

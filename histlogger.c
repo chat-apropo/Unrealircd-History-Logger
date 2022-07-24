@@ -9,7 +9,7 @@
 #include <stdarg.h>
 #include "unrealircd.h"
 
-#define MAX_LENGTH 2000 /* Max length of a history per channel to keep */
+#define MAX_LENGTH 2000 /* Default Max length of a history per channel to keep */
 #define ENABLE_DEBUG true
 #define LOGTO_USER "mattf" /* User to send the log to */
 
@@ -27,7 +27,12 @@ struct HistLoggerConfig {
   NameList *blacklist;
   char *dbpath;
   int regonly;
+  int maxlength;
 } config;
+
+int config_dbpath_set = 0;
+int config_regonly_set = 0;
+int config_maxlength_set = 0;
 
 
 // Message user
@@ -138,18 +143,52 @@ int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs
             cep->file->filename, cep->line_number);
         errors++;
       }
+      UnrealDB *db = NULL;
+      db = unrealdb_open(cep->value, UNREALDB_MODE_READ, NULL);
+      if (!db) {
+        // File doesn't exist, lets create it
+        if (unrealdb_get_error_code() == UNREALDB_ERROR_FILENOTFOUND) {
+          db = unrealdb_open(cep->value, UNREALDB_MODE_WRITE, NULL);
+          if (!db) {
+            config_error("%s:%i: could not open database at set::histlogger::dbpath: %s",
+              cep->file->filename, cep->line_number, unrealdb_get_error_string());
+            errors++;
+          } else {
+            unrealdb_close(db);
+          }
+        } else {
+          config_error("%s:%i: could not open database at set::histlogger::dbpath: %s",
+            cep->file->filename, cep->line_number, unrealdb_get_error_string());
+          errors++;
+        }
+      } else {
+        unrealdb_close(db);
+      }
+      config_dbpath_set = 1;
       config.dbpath = cep->value;
     }
     else if (!strcmp(cep->name, "regonly")) {
       config.regonly = atoi(cep->value);
       if (config.regonly == 0) {
-        config_error("%s:%i: set::histlogger::regonly is not a number",
+        config_error("%s:%i: set::histlogger::regonly is not a number greater than 0",
             cep->file->filename, cep->line_number);
         errors++;
+      } else {
+        config_regonly_set = 1;
+      }
+    }
+    else if (!strcmp(cep->name, "maxlength")) {
+      config.maxlength = atoi(cep->value);
+      if (config.maxlength == 0) {
+        config_error("%s:%i: set::histlogger::maxlength is not a number greater than 0",
+            cep->file->filename, cep->line_number);
+        errors++;
+      } else {
+        config_maxlength_set = 1;
       }
     }
     else {
-      config_error("%s:%i: unknown directive set::mymod::%s",
+      config_error("%s:%i: set::histlogger has unknown item '%s'",
           cep->file->filename, cep->line_number, cep->name);
       errors++;
     }
@@ -162,12 +201,15 @@ int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs
 int hist_logger_config_posttest(int *errs) {
   int errors = 0;
 
-  if (!config.dbpath) {
+  if (!config_dbpath_set) {
     config_error("set::mymod::dbpath is not set");
     errors++; 
   }
-  if (!config.regonly) {
+  if (!config_regonly_set) {
     config.regonly = 1;
+  }
+  if (!config_maxlength_set) {
+    config.maxlength = MAX_LENGTH;
   }
   return errors;
 }
