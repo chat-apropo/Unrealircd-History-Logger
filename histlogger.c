@@ -7,6 +7,8 @@
  */
 
 #include <stdarg.h>
+#include <sqlite3.h>
+
 #include "unrealircd.h"
 
 #define MAX_LENGTH 2000 /* Default Max length of a history per channel to keep */
@@ -22,13 +24,11 @@ ModuleHeader MOD_HEADER
         "unrealircd-6", /* do not change this, it indicates module API version */
 };
 
-struct HistLoggerConfig {
-  NameList *whitelist;
-  NameList *blacklist;
-  char *dbpath;
-  int regonly;
-  int maxlength;
-} config;
+NameList *whitelist;
+NameList *blacklist;
+char *dbpath;
+int regonly;
+int maxlength;
 
 int config_dbpath_set = 0;
 int config_regonly_set = 0;
@@ -129,12 +129,12 @@ int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs
     }
     else if (!strcmp(cep->name, "whitelist")) {
       for (value = cep->items; value; value = value->next) {
-        add_name_list(config.whitelist, value->name);
+        add_name_list(whitelist, value->name);
       }
     }
     else if (!strcmp(cep->name, "blacklist")) {
       for (value = cep->items; value; value = value->next) {
-        add_name_list(config.blacklist, value->name);
+        add_name_list(blacklist, value->name);
       }
     }
     else if (!strcmp(cep->name, "dbpath")) {
@@ -142,34 +142,24 @@ int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs
         config_error("%s:%i: set::histlogger::dbpath is empty",
             cep->file->filename, cep->line_number);
         errors++;
-      }
-      UnrealDB *db = NULL;
-      db = unrealdb_open(cep->value, UNREALDB_MODE_READ, NULL);
-      if (!db) {
-        // File doesn't exist, lets create it
-        if (unrealdb_get_error_code() == UNREALDB_ERROR_FILENOTFOUND) {
-          db = unrealdb_open(cep->value, UNREALDB_MODE_WRITE, NULL);
-          if (!db) {
-            config_error("%s:%i: could not open database at set::histlogger::dbpath: %s",
-              cep->file->filename, cep->line_number, unrealdb_get_error_string());
-            errors++;
-          } else {
-            unrealdb_close(db);
-          }
-        } else {
-          config_error("%s:%i: could not open database at set::histlogger::dbpath: %s",
-            cep->file->filename, cep->line_number, unrealdb_get_error_string());
-          errors++;
-        }
       } else {
-        unrealdb_close(db);
+      
+      /* sqlite3 *db; */
+      /* if (sqlite3_open(cep->value, &db)) { */
+      /*   printf("Could not open the.db\n"); */
+      /*   exit(-1); */
+      /* } else { */
+        /* sqlite3_close(db); */
+        config_dbpath_set = 1;
+        mdebug("dbpath set to %s", cep->value);
+        dbpath = cep->value;
+        mdebug("dbpath set to %s", dbpath);
+      /* } */
       }
-      config_dbpath_set = 1;
-      config.dbpath = cep->value;
     }
     else if (!strcmp(cep->name, "regonly")) {
-      config.regonly = atoi(cep->value);
-      if (config.regonly == 0) {
+      regonly = atoi(cep->value);
+      if (regonly == 0) {
         config_error("%s:%i: set::histlogger::regonly is not a number greater than 0",
             cep->file->filename, cep->line_number);
         errors++;
@@ -178,8 +168,8 @@ int hist_logger_config_test(ConfigFile *cf, ConfigEntry *ce, int type, int *errs
       }
     }
     else if (!strcmp(cep->name, "maxlength")) {
-      config.maxlength = atoi(cep->value);
-      if (config.maxlength == 0) {
+      maxlength = atoi(cep->value);
+      if (maxlength == 0) {
         config_error("%s:%i: set::histlogger::maxlength is not a number greater than 0",
             cep->file->filename, cep->line_number);
         errors++;
@@ -206,15 +196,25 @@ int hist_logger_config_posttest(int *errs) {
     errors++; 
   }
   if (!config_regonly_set) {
-    config.regonly = 1;
+    regonly = 1;
   }
   if (!config_maxlength_set) {
-    config.maxlength = MAX_LENGTH;
+    maxlength = MAX_LENGTH;
   }
   return errors;
 }
 
 int on_channel_send(Client *client, Channel *channel, MessageTag *mtags, const char *text, SendType	sendtype) {
+  // If channel in blacklist ignore
+  /* if (find_name_list(blacklist, channel->name)->name) { */
+  /*   /1* mdebug("Returning: %s", find_name_list(blacklist, channel->name)->name); *1/ */
+  /*   mdebug("Returning %s", dbpath); */
+  /*   return 0; */
+  /* } */
+  // If whitelist is not empty and channel is not in whitelist ignore
+  /* if (config.->hitelist && !find_name_list(whitelist, channel->name)->name) { */
+  /*   return 0; */
+  /* } */
   mdebug("%s:%s - %s", channel->name, client->name, text);
   return 0;
 }
@@ -237,7 +237,7 @@ int on_quit(Client *client, MessageTag *mtags, const char *comment) {
     Membership *membership = user->channel;
     while (membership!=NULL) {
       Channel *channel = membership->channel;
-      mdebug("%s left %s", client->name, channel->name);
+      on_part(client, channel, mtags, comment);
       membership = membership->next;
     }
   }
